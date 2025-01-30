@@ -11,14 +11,33 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $totalProducts = count($products);
 $totalRevenue = array_sum(array_column($products, 'price'));
 
+// Set session timeout (in seconds)
+$sessionTimeout = 9 * 60; // 5 minutes
+
+// Check if user is already logged in
+if (isset($_SESSION['user_id'])) {
+    // Check if last activity timestamp is set and expired
+    if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $sessionTimeout)) {
+        // Session expired
+        session_unset();
+        session_destroy();
+        header("Location: login.php?message=Session expired. Please log in again.");
+        exit;
+    }
+    // Update last activity time
+    $_SESSION['last_activity'] = time();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = $_POST['title'];
     $description = $_POST['description'];
     $price = $_POST['price'];
     $image = null;
+    $isNewImageUploaded = isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK;
 
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
-            $targetDir = 'images_products/';
+    // Handle image upload
+    if ($isNewImageUploaded) {
+        $targetDir = 'images_products/';
         
         if (!file_exists($targetDir)) {
             if (!mkdir($targetDir, 0775, true)) {
@@ -32,12 +51,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!move_uploaded_file($_FILES['image']['tmp_name'], $image)) {
             die("Failed to upload image. Check directory permissions and path: " . $targetDir);
         }
-    } else {
-        die("Error uploading image: " . $_FILES['image']['error']);
     }
 
     try {
         if (isset($_POST['id']) && !empty($_POST['id'])) {
+            // Edit existing product
             $id = $_POST['id'];
 
             // Retrieve existing product to get the current image path
@@ -46,24 +64,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProduct = $stmt->fetch(PDO::FETCH_ASSOC);
 
             // If no new image is uploaded, keep the current image
-            if (!$image) {
+            if (!$isNewImageUploaded) {
                 $image = $existingProduct['image'];
             }
 
+            // Update the product
             $sql = "UPDATE products SET title = ?, description = ?, price = ?, image = ? WHERE id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$title, $description, $price, $image, $id]);
         } else {
-            // Ensure image is provided for new products
-            if (!$image) {
+            // Add new product, ensuring image is provided
+            if (!$isNewImageUploaded) {
                 throw new Exception("Image is required for new products.");
             }
 
+            // Insert new product
             $sql = "INSERT INTO products (title, description, price, image) VALUES (?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$title, $description, $price, $image]);
         }
 
+        // Redirect to prevent form resubmission
         header("Location: index.php?success=Product saved successfully");
         exit;
     } catch (Exception $e) {
@@ -88,7 +109,6 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 
     <style>
-        /* General Styles */
         * {
             margin: 0;
             padding: 0;
@@ -105,12 +125,13 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
         .main-container {
             display: flex;
             height: 100vh;
+            font-size: 18px;
         }
 
         /* Sidebar Styling */
         .sidebar {
+            background: linear-gradient(to right, #6a11cb, #2975fc);
             width: 290px;
-            background-color: #2c3e50;
             color: #ecf0f1;
             transition: width 0.3s;
         }
@@ -154,7 +175,7 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
         }
 
         .nav-item:hover {
-            background-color: #34495e;
+            background-color: #6a11cb;
             color: orange;
         }
 
@@ -212,7 +233,7 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
 
         /* Top Bar Styling */
         .top-bar {
-            background: linear-gradient(135deg, #4CBB17, #2c3e50);
+            background: linear-gradient(135deg, #6a11cb, #2975fc);
             color: white;
             padding: 15px 25px;
             margin-bottom: 20px;
@@ -240,13 +261,68 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
 
         /* Products Icon */
         #products .top-bar h3::before {
-        content: '\f291'; /* FontAwesome box icon */
-        font-family: 'Font Awesome 5 Free';
-        font-weight: 900;
-        margin-right: 10px;
+            content: '\f291'; /* FontAwesome box icon */
+            font-family: 'Font Awesome 5 Free';
+            font-weight: 900;
+            margin-right: 10px;
         }
 
+        .title-cell {
+    font-size: 18px; /* Adjust as needed */
+    max-width: 180px; /* Limit title width */
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis for overflow text */
+}
+
+.description-cell {
+    font-size: 18px; /* Adjust as needed */
+    max-width: 400px; /* Limit description width */
+    white-space: normal; /* Allow text wrapping */
+    overflow-wrap: break-word; /* Wrap long words */
+    line-height: 1.4;
+}
+
+.thead-bar th {
+    background: #0F173A;
+    color: white; /* White text */
+    font-weight: bold;
+    padding: 12px;
+    text-align: center;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+  }
+
+  .thead-bar th:first-child {
+    border-top-left-radius: 8px; 
+  }
+
+  .thead-bar th:last-child {
+    border-top-right-radius: 8px; 
+
+  .thead-bar th:hover {
+    background-color: #45a049; 
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1); 
+  }
+
+  th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+  }
+
+  tr:hover {
+    background-color: #f1f1f1; 
+  }
+
     </style>
+
 </head>
 
 <body>
@@ -254,9 +330,9 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
         <!-- Sidebar Section -->
         <div class="sidebar" id="sidebar">
             <div class="user-info">
-                <img src="https://img.freepik.com/premium-photo/colorful-display-word-code-wall-with-words-code-code-code_1099689-742.jpg"
+                <img src="https://i.pinimg.com/736x/90/1f/0e/901f0e062ef7b148ec8f5934349d6dfc.jpg"
                      alt="User Image" class="user-img" />
-                <h3 class="username">Admin</h3>
+                <h3 class="username">Admin Portal</h3>
             </div>
             <ul class="nav-menu">
                 <li class="nav-item active" data-target="dashboard">
@@ -314,7 +390,7 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
                         <button class="btn custom-orange-btn" data-toggle="modal" data-target="#addProductModal">Add New Product</button>
                     </div>
                     <table class="table mt-4">
-                        <thead class="thead-dark">
+                        <thead class="thead-bar">
                             <tr>
                                 <th>ID</th>
                                 <th>Title</th>
@@ -328,9 +404,9 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
                         <?php foreach ($products as $product): ?>
                                 <tr>
                                     <td><?= $product['id'] ?></td>
-                                    <td><?= htmlspecialchars($product['title']) ?></td>
-                                    <td><?= htmlspecialchars($product['description']) ?></td>
-                                    <td><img src="<?= $product['image'] ?>" alt="Image" width="80"></td>
+                                    <td class="title-cell"><?= htmlspecialchars($product['title']) ?></td>
+                                    <td class="description-cell"><?= htmlspecialchars($product['description']) ?></td>
+                                    <td><img src="<?= $product['image'] ?>" alt="Image" width="135"></td>
                                     <td>$<?= number_format($product['price'], 2) ?></td>
                                     <td>
                                         <button class="btn btn-warning" onclick="editProduct(<?= htmlspecialchars(json_encode($product)) ?>)">Edit</button>
@@ -395,7 +471,7 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
                         <textarea name="description" id="edit_description" class="form-control" placeholder="Description"></textarea>
                     </div>
                     <div class="form-group">
-                        <input type="file" name="image" id="edit_image" class="form-control" required>
+                        <input type="file" name="image" id="edit_image" class="form-control">
                     </div>
                     <div class="form-group">
                         <input type="number" name="price" id="edit_price" class="form-control" step="0.01" placeholder="Price" required>
@@ -461,22 +537,24 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
             });
         }
 
-        function addProduct() {
-            document.getElementById('add_product_id').value = ''; // Clear hidden ID field
-            document.querySelector('[name="title"]').value = '';
-            document.querySelector('[name="description"]').value = '';
-            document.querySelector('[name="price"]').value = '';
-            $('#addProductModal').modal('show');
-        }
+         // Populate product details in modal for editing
+    function editProduct(product) {
+        document.getElementById('edit_product_id').value = product.id;
+        document.getElementById('edit_title').value = product.title;
+        document.getElementById('edit_description').value = product.description;
+        document.getElementById('edit_price').value = product.price;
+        $('#editProductModal').modal('show');
+    }
 
-        // Populate product details in modal for editing
-        function editProduct(product) {
-            document.getElementById('product_id').value = product.id;
-            document.querySelector('[name="title"]').value = product.title;
-            document.querySelector('[name="description"]').value = product.description;
-            document.querySelector('[name="price"]').value = product.price;
-            $('#editProductModal').modal('show');
-        }
+    // Populate product details in modal for adding new product
+    function addProduct() {
+        document.getElementById('product_id').value = ""; // Clear ID for a new product
+        document.querySelector('[name="title"]').value = "";
+        document.querySelector('[name="description"]').value = "";
+        document.querySelector('[name="price"]').value = "";
+        document.querySelector('[name="image"]').value = ""; // Clear image input
+        $('#addProductModal').modal('show');
+    }
 
         // Confirm before deleting product
         function deleteProduct(id) {
@@ -485,8 +563,23 @@ $message = isset($_GET['success']) ? htmlspecialchars($_GET['success']) : '';
             }
         }
 
-    </script>
+        let logoutTimer;
+        function resetLogoutTimer() {
+            clearTimeout(logoutTimer);
+                logoutTimer = setTimeout(() => {
+                alert("Your activity has expired. Please login again.");
+                window.location.href = 'logout.php';  // Redirect to the logout script
+            }, 500000); // 5 minutes (in milliseconds)
+        }
 
+        // Reset the timer on any user interaction
+        document.addEventListener('mousemove', resetLogoutTimer);
+        document.addEventListener('keypress', resetLogoutTimer);
+
+        // Start the initial timer
+        resetLogoutTimer();
+
+    </script>
 
     <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"></script>

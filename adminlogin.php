@@ -44,11 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css">
     <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
 
-    <title>User Login</title>
+    <title>Admin Login</title>
 
     <style>
         body {
-          background: linear-gradient(to right, #6a11cb, #2575fc);
+          background: linear-gradient(to right, #6a11cb, #2975fc);
             height: 100vh;
             margin: 0;
             display: flex;
